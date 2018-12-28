@@ -100,10 +100,10 @@ class SocketClient(SocketConstants):
 
 if __name__ == '__main__':
     from Socketer.Server import SocketServer, SocketMessage
-    port = 14112
-    new_server = SocketServer(port=port)
+    p = 14112
+    new_server = SocketServer(port=p)
     new_server.start()
-    new_client = SocketClient(socket.gethostname(), port=port)
+    new_client = SocketClient(socket.gethostname(), port=p)
     new_client.start()
     time.sleep(2)
     try:
