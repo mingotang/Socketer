@@ -39,7 +39,6 @@ class SocketServer(SocketConstants):
         self.__thread_dict__ = dict()
 
         self.__receive_tag__ = False
-        self.__receive_thread__ = None
 
         self.__server_tag__ = False
         self.__server_thread__ = None
@@ -53,20 +52,19 @@ class SocketServer(SocketConstants):
     def on_new_client(self, sock_addr: str):
         pass
 
-    def __receive_msg__(self, sock_client: socket.socket, sock_addr):
-        self.__client_dict__[sock_addr] = sock_client
-        self.log.info('connected from: {}.'.format(sock_addr))
-        self.on_new_client(sock_addr)
-
+    def __receiving_msg__(self, sock_client: socket.socket, sock_addr):
         while self.__receive_tag__ is True:
-            msg = sock_client.recv(self.__bufsize__).decode(self.__msg_encoding__)
+            try:
+                msg = sock_client.recv(self.__bufsize__).decode(self.__msg_encoding__)
+            except socket.timeout:
+                continue
 
             if len(msg) == 0:
                 continue
 
-            self.log.debug('message from {}: {}'.format(sock_addr, msg))
+            self.log.debug('message from {} with {}'.format(sock_addr, msg))
             if msg == self.CLIENT_EXIT_MSG:
-                self.server_task.put(SocketMessage(sock_addr, self.CLIENT_EXIT_MSG))
+                self.msg_out.put(SocketMessage(sock_addr, self.CLIENT_EXIT_MSG))
                 sock_client.shutdown(socket.SHUT_RD)
                 break
             else:
@@ -90,17 +88,26 @@ class SocketServer(SocketConstants):
     def __server_process__(self):
         while self.__server_tag__ is True:
             try:
-                obj = self.server_task.get(timeout=10)
-                assert isinstance(obj, SocketMessage)
-                if obj.msg == self.CLIENT_EXIT_MSG:
-                    sock_client = self.__client_dict__[obj.addr]
-                    sock_client.shutdown()
-                    self.__client_dict__.pop(obj.addr)
-                    if obj.addr in self.__thread_dict__:
-                        self.__thread_dict__.pop(obj.addr)
-                else:
-                    raise NotImplementedError('Unknown SocketServer task {} from {}'.format(obj.msg, obj.addr))
-            except Empty:
+                client_sock, client_addr = self.socket.accept()
+                self.log.debug('new connection from {}.'.format(client_addr))
+                self.on_new_client(client_addr)
+                self.__client_dict__[client_addr] = client_sock
+                new_thread = Thread(target=self.__receiving_msg__, args=(client_sock, client_addr))
+                new_thread.start()
+                self.__thread_dict__[client_addr] = new_thread
+                while self.server_task.empty() is False:
+                    obj = self.server_task.get()
+                    assert isinstance(obj, SocketMessage)
+                    if obj.msg == self.CLIENT_EXIT_MSG:
+                        sock_client = self.__client_dict__.pop(obj.addr)
+                        assert isinstance(sock_client, socket.socket)
+                        sock_client.shutdown(socket.SHUT_WR)
+                        sock_client.close()
+                        if obj.addr in self.__thread_dict__:
+                            self.__thread_dict__.pop(obj.addr)
+                    else:
+                        raise NotImplementedError('Unknown SocketServer task {} from {}'.format(obj.msg, obj.addr))
+            except socket.timeout:
                 continue
 
     def __msg_process__(self):
@@ -113,40 +120,31 @@ class SocketServer(SocketConstants):
         self.__send_thread__.start()
         self.log.debug('message sending started.')
 
+        self.log.debug('start waiting for socket connection.')
+        self.socket.listen(10)
+
         self.__process_tag__ = True
         self.__process_thread__ = Thread(target=self.__msg_process__, name='socket message process')
         self.__process_thread__.start()
         self.log.debug('message processing started.')
 
-        self.log.debug('start waiting for socket connection.')
-        self.socket.listen(10)
-
+        self.__receive_tag__ = True
         self.__server_tag__ = True
         self.__server_thread__ = Thread(target=self.__server_process__, name='socket server process')
         self.__server_thread__.start()
-
-        self.__receive_tag__ = True
-        while self.__receive_tag__ is True:
-            try:
-                client_sock, client_addr = self.socket.accept()
-                receive_thread = Thread(target=self.__receive_msg__, args=(client_sock, client_addr), name=client_addr)
-                receive_thread.start()
-                self.__thread_dict__[client_addr] = receive_thread
-                self.log.debug('message receiving from {} started.'.format(client_addr))
-            except socket.timeout:
-                continue
 
         self.log.info('{} started.'.format(self.__class__.__name__))
 
     def stop(self):
         self.__receive_tag__ = False
         for t_key, t_value in self.__thread_dict__.items():
-            t_value.join(10)
+            t_value.join()
             self.log.debug('message receiving from {} stopped.'.format(t_key))
 
-        while self.msg_in.empty() is False:
-            time.sleep(0.1)
-        self.log.debug('all message received processed.')
+        # while self.msg_in.empty() is False:
+        #     time.sleep(0.1)
+        # self.log.debug('all message received processed.')
+        # TODO: 暂存未处理消息
 
         self.__server_tag__ = False
         self.__server_thread__.join()
@@ -163,12 +161,6 @@ class SocketServer(SocketConstants):
         self.__send_thread__.join()
         self.log.debug('message sending stopped.')
 
-        # close socket client
-        for s_key, s_value in self.__client_dict__.items():
-            s_value.shutdown(socket.SHUT_RDWR)
-            s_value.close()
-            self.log.debug('connection from {} closed.'.format(s_key))
-        self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
         self.log.info('{} stopped.'.format(self.__class__.__name__))
