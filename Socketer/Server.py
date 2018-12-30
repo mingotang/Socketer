@@ -110,7 +110,7 @@ class SocketServer(SocketConstants):
             except socket.timeout:
                 continue
 
-    def __msg_process__(self):
+    def process_msg(self):
         while self.__process_tag__ is True:
             time.sleep(1)
 
@@ -124,7 +124,7 @@ class SocketServer(SocketConstants):
         self.socket.listen(10)
 
         self.__process_tag__ = True
-        self.__process_thread__ = Thread(target=self.__msg_process__, name='socket message process')
+        self.__process_thread__ = Thread(target=self.process_msg, name='socket message process')
         self.__process_thread__.start()
         self.log.debug('message processing started.')
 
