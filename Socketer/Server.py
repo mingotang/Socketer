@@ -58,6 +58,8 @@ class SocketServer(SocketConstants):
                 msg = sock_client.recv(self.__bufsize__).decode(self.__msg_encoding__)
             except socket.timeout:
                 continue
+            except KeyboardInterrupt:
+                break
 
             if len(msg) == 0:
                 continue
@@ -65,6 +67,7 @@ class SocketServer(SocketConstants):
             self.log.debug('message from {} with {}'.format(sock_addr, msg))
             if msg == self.CLIENT_EXIT_MSG:
                 self.msg_out.put(SocketMessage(sock_addr, self.CLIENT_EXIT_MSG))
+                self.server_task.put(SocketMessage(sock_addr, self.CLIENT_EXIT_MSG))
                 sock_client.shutdown(socket.SHUT_RD)
                 break
             else:
@@ -74,16 +77,18 @@ class SocketServer(SocketConstants):
         while self.__send_tag__ is True:
             try:
                 msg_obj = self.msg_out.get(timeout=1)
-
-                if isinstance(msg_obj, SocketMessage):
-                    msg_client = self.__client_dict__[msg_obj.addr]
-                    assert isinstance(msg_client, socket.socket)
-                    msg_client.sendall(msg_obj.msg.encode(self.__msg_encoding__))
-                    self.log.debug('message to {}: {}'.format(msg_obj.addr, msg_obj.msg))
-                else:
-                    raise NotImplementedError
             except Empty:
                 continue
+            except KeyboardInterrupt:
+                break
+
+            if isinstance(msg_obj, SocketMessage):
+                msg_client = self.__client_dict__[msg_obj.addr]
+                assert isinstance(msg_client, socket.socket)
+                msg_client.sendall(msg_obj.msg.encode(self.__msg_encoding__))
+                self.log.debug('message to {}: {}'.format(msg_obj.addr, msg_obj.msg))
+            else:
+                raise NotImplementedError
 
     def __server_process__(self):
         while self.__server_tag__ is True:
@@ -95,8 +100,9 @@ class SocketServer(SocketConstants):
                 new_thread = Thread(target=self.__receiving_msg__, args=(client_sock, client_addr))
                 new_thread.start()
                 self.__thread_dict__[client_addr] = new_thread
-                while self.server_task.empty() is False:
-                    obj = self.server_task.get()
+            except socket.timeout:
+                if not self.server_task.empty():
+                    obj = self.server_task.get(timeout=1)
                     assert isinstance(obj, SocketMessage)
                     if obj.msg == self.CLIENT_EXIT_MSG:
                         sock_client = self.__client_dict__.pop(obj.addr)
@@ -107,8 +113,10 @@ class SocketServer(SocketConstants):
                             self.__thread_dict__.pop(obj.addr)
                     else:
                         raise NotImplementedError('Unknown SocketServer task {} from {}'.format(obj.msg, obj.addr))
-            except socket.timeout:
-                continue
+                else:
+                    continue
+            except KeyboardInterrupt:
+                break
 
     def process_msg(self):
         while self.__process_tag__ is True:
@@ -139,7 +147,14 @@ class SocketServer(SocketConstants):
         self.__receive_tag__ = False
         for t_key, t_value in self.__thread_dict__.items():
             t_value.join()
-            self.log.debug('message receiving from {} stopped.'.format(t_key))
+
+        time.sleep(1)
+        for t_key, t_value in self.__thread_dict__.items():
+            assert isinstance(t_value, Thread)
+            if t_value.is_alive():
+                self.log.warning('thread {} not stopped.'.format(t_key))
+            else:
+                self.log.debug('thread {} stopped.'.format(t_key))
 
         # while self.msg_in.empty() is False:
         #     time.sleep(0.1)
@@ -147,34 +162,55 @@ class SocketServer(SocketConstants):
         # TODO: 暂存未处理消息
 
         self.__server_tag__ = False
-        self.__server_thread__.join()
+        self.__server_thread__.join(2)
+        if self.__process_thread__.is_alive():
+            self.log.warning('server thread not stopped.')
+        else:
+            self.log.debug('server thread stopped.')
 
         while self.msg_out.empty() is False:
             time.sleep(0.1)
         self.log.debug('all task processed send.')
 
         self.__process_tag__ = False
-        self.__process_thread__.join(10)
-        self.log.debug('message processing thread stopped.')
+        self.__process_thread__.join(2)
+        if self.__process_thread__.is_alive():
+            self.log.warning('message processing thread not stopped.')
+        else:
+            self.log.debug('message processing thread stopped.')
 
         self.__send_tag__ = False
-        self.__send_thread__.join()
-        self.log.debug('message sending stopped.')
+        self.__send_thread__.join(2)
+        if self.__send_thread__.is_alive():
+            self.log.warning('message sending thread not stopped.')
+        else:
+            self.log.debug('message sending thread stopped.')
 
         self.socket.close()
 
         self.log.info('{} stopped.'.format(self.__class__.__name__))
 
+    def is_alive(self):
+        return self.__server_tag__
+
 
 if __name__ == '__main__':
+    import threading
     new_server = SocketServer()
     try:
         new_server.start()
-        s = new_server.msg_in.get()
-        print(s)
-        new_server.msg_out.put(SocketMessage(s.addr, 'response'))
+        while new_server.is_alive():
+            try:
+                s = new_server.msg_in.get(timeout=1)
+                print('msg_in', s)
+                new_server.msg_out.put(SocketMessage(s.addr, 'response'))
+            except Empty:
+                continue
+            except KeyboardInterrupt:
+                break
     except KeyboardInterrupt as e:
         new_server.stop()
         raise e
     finally:
         new_server.stop()
+        print('active theading: ', threading.active_count(), threading.current_thread())

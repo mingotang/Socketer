@@ -35,10 +35,12 @@ class SocketClient(SocketConstants):
         while self.__send_tag__ is True:
             try:
                 msg_obj = self.msg_out.get(timeout=1)
-                self.socket.sendall(msg_obj.encode(self.__msg_encoding__))
-                self.log.debug('message to {}: {}'.format(self.__host__, msg_obj))
             except Empty:
                 continue
+            except KeyboardInterrupt:
+                break
+            self.socket.sendall(msg_obj.encode(self.__msg_encoding__))
+            self.log.debug('message to {}: {}'.format(self.__host__, msg_obj))
 
     def __receive_msg__(self):
         while self.__receive_tag__ is True:
@@ -47,7 +49,7 @@ class SocketClient(SocketConstants):
                 if len(msg) == 0:
                     continue
                 self.log.debug('message from {}: {}'.format(self.__host__, msg))
-                if msg == 'SocketExit':
+                if msg == self.CLIENT_EXIT_MSG:
                     break
                 else:
                     self.msg_in.put(msg)
@@ -56,6 +58,8 @@ class SocketClient(SocketConstants):
                 self.log.info('redo connect to server {}'.format(self.__host__))
             except socket.timeout:
                 continue
+            except KeyboardInterrupt:
+                break
 
     def start(self):
         self.log.info('connect to server {}'.format(self.__host__))

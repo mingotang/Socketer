@@ -5,6 +5,8 @@ __version__ = '0.0.1'
 
 
 # include Package methods
+from Socketer.cmd import cli, socketer
+
 from Socketer.Client import SocketClient
 from Socketer.Server import SocketServer, SocketMessage
 

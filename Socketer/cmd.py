@@ -16,9 +16,12 @@ Options:
     -h --help        Show this help message and exit.
     -v --version     Show version.
 """
+import time
+
 from docopt import docopt
 
-class sockter():
+
+class socketer():
 
     def __init__(self, **kwargs):
         self.__args__ = kwargs
@@ -30,10 +33,14 @@ class sockter():
             wind_server = WindServer()
             try:
                 wind_server.start()
+                while wind_server.is_alive():
+                    time.sleep(5)
+                wind_server.stop()
             except KeyboardInterrupt:
                 wind_server.stop()
-            finally:
-                wind_server.stop()
+                exit(0)
+            else:
+                exit(0)
         else:
             pass
 
@@ -42,7 +49,8 @@ def cli():
     """ 入口方法 """
     from Socketer import __version__
     args = docopt(__doc__, version='Socketer {}'.format(__version__))
-    sockter(**args).get_command()
+    socketer(**args).get_command()
+
 
 if __name__ == '__main__':
     cli()

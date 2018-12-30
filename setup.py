@@ -75,7 +75,7 @@ setup(
     ],
 
     # What does your project relate to?
-    keywords='socket service',
+    keywords='socketer service',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
@@ -136,7 +136,7 @@ setup(
     #                                    'pip%s=pip:main' % sys.version[:3]]),
     entry_points={
         'console_scripts': [
-            'socket=cmd:cli',
+            'socketer=Socketer.cmd:cli',
         ],
     },
 )
