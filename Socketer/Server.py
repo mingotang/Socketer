@@ -162,8 +162,8 @@ class SocketServer(SocketConstants):
         # TODO: 暂存未处理消息
 
         self.__server_tag__ = False
-        self.__server_thread__.join(2)
-        if self.__process_thread__.is_alive():
+        self.__server_thread__.join(3)
+        if self.__server_thread__.is_alive():
             self.log.warning('server thread not stopped.')
         else:
             self.log.debug('server thread stopped.')
