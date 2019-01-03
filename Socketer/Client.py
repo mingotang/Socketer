@@ -97,7 +97,7 @@ class SocketClient(SocketConstants):
         self.__receive_thread__.join(10)
         self.log.debug('message receiving stopped.')
 
-        self.socket.shutdown(socket.SHUT_RDWR)
+        # self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
         self.log.info('{} stopped.'.format(self.__class__.__name__))
 
