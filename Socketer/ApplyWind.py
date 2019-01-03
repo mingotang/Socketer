@@ -63,7 +63,7 @@ class WindServer(SocketServer, WindStatusCode):
         SocketServer.__init__(self, **kwargs)
         self.engine = None
 
-    def __on_new_client__(self, sock_addr):
+    def on_new_client(self, sock_addr: str):
         from WindPy import w
         self.log.debug('new connection arrived {}'.format(sock_addr))
         self.engine = w
