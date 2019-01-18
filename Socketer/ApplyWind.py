@@ -37,7 +37,7 @@ class WindClient(SocketClient, WindStatusCode):
 
     def wsd(self, codes: str, fields: str, start_date: datetime.date, end_date: datetime.date, options: str = ''):
         self.msg_lock.acquire()
-        self.msg_lock.locked()
+        # self.msg_lock.locked()
         self.msg_out.put(json.dumps({
             'func': 'wsd',
             'args': (codes, fields, start_date, end_date, options)
